@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="أسرار الكون">
+  <defs>
+    <mask id="crescent">
+      <rect width="512" height="512" fill="#000"/>
+      <circle cx="256" cy="244" r="150" fill="#fff"/>
+      <circle cx="330" cy="178" r="128" fill="#000"/>
+    </mask>
+  </defs>
+  <rect width="512" height="512" rx="104" fill="#1e2a4a"/>
+  <circle cx="256" cy="244" r="150" fill="#e2b560" mask="url(#crescent)"/>
+  <g fill="#e2b560">
+    <path d="M112 118 l10 24 24 10 -24 10 -10 24 -10 -24 -24 -10 24 -10z"/>
+    <path d="M404 150 l8 20 20 8 -20 8 -8 20 -8 -20 -20 -8 20 -8z"/>
+    <path d="M150 380 l7 16 16 7 -16 7 -7 16 -7 -16 -16 -7 16 -7z"/>
+    <path d="M372 372 l9 22 22 9 -22 9 -9 22 -9 -22 -22 -9 22 -9z"/>
+  </g>
+</svg>
