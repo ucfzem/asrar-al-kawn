@@ -116,6 +116,30 @@
     @media (min-width: 1100px) { main { max-width: 1040px; } .chapter-list { grid-template-columns: 1fr 1fr 1fr; } article p { font-size: calc(var(--content-font-size, 1rem) * 1.25); } }
     @media (min-width: 1600px) { main { max-width: 1200px; } }
     @media (max-width: 420px) { header h1 { font-size: 1rem; } .home h1 { font-size: 1.35rem; } }
+    /* Search */
+    [hidden] { display: none !important; }
+    .search-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 18px 0 6px; text-align: right; }
+    .input-container { position: relative; flex: 1 1 240px; max-width: 440px; }
+    #searchInput {
+      width: 100%; box-sizing: border-box; font-family: inherit; font-size: 1rem;
+      color: var(--ink); background: var(--card); border: 1px solid var(--line);
+      border-radius: 8px; padding: 11px 13px; padding-inline-end: 38px;
+    }
+    #searchInput:focus { border-color: var(--accent); }
+    #clearBtn {
+      position: absolute; inset-inline-end: 6px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; cursor: pointer; color: var(--muted);
+      font-size: 1.35rem; line-height: 1; padding: 2px 8px; display: none;
+    }
+    #clearBtn:hover { color: var(--ink); }
+    .match-counter { color: var(--muted); font-size: .85rem; }
+    .no-results { color: var(--muted); text-align: center; padding: 28px 10px; }
+    .search-result { align-items: flex-start; }
+    .search-result .res-body { display: flex; flex-direction: column; gap: 4px; text-align: right; }
+    .search-result .snippet { color: var(--muted); font-size: .82rem; font-weight: 400; line-height: 1.6; }
+    mark { background: #ffe066; color: #201a10; padding: 0 2px; border-radius: 3px; }
+    .tv-mode .search-wrap { font-size: 1.25rem; }
+    .tv-mode #searchInput { font-size: 1.3rem; padding-block: 15px; }
   </style>
   <script>
     (function () {
@@ -190,7 +214,16 @@
             '<p class="sub">الهيئة السَّنِية في الهيئة السُّنِّية</p>' +
             '<p class="note">رسالة في علم الهيئة والفلك والأخبار، منسوبة إلى جلال الدين السيوطي (ت ٩١١هـ). ' +
             'النص الكامل كما ورد في المكتبة الشاملة (كتاب 209)، مع التنبيه أن نسبة الكتاب غير مؤكدة.</p>' +
-            '<div class="chapter-list">' +
+            '<div class="search-wrap">' +
+              '<div class="input-container">' +
+                '<input type="text" id="searchInput" placeholder="ابحث في الكتاب (اضغط / للتركيز)..." autocomplete="off">' +
+                '<button type="button" id="clearBtn" title="مسح البحث">&times;</button>' +
+              '</div>' +
+              '<span id="matchCounter" class="match-counter"></span>' +
+            '</div>' +
+            '<div id="noResults" class="no-results" hidden>لا توجد نتائج مطابقة — جرّب كلمة أخرى.</div>' +
+            '<div class="chapter-list" id="searchResults" hidden></div>' +
+            '<div class="chapter-list" id="chapterList">' +
               chapters.map(function (c, i) {
                 return '<button type="button" class="chapter-btn" data-i="' + i + '">' +
                   '<span class="num">' + (i + 1) + '</span><span>' + esc(c.title) + '</span></button>';
@@ -198,8 +231,114 @@
             '</div>' +
           '</div>';
         wireFont();
-        queAll('.chapter-btn').forEach(function (b) { b.onclick = function () { show(+b.getAttribute('data-i')); }; });
+        var si = document.getElementById('searchInput');
+        if (si) si.oninput = runSearch;
+        var cb = document.getElementById('clearBtn');
+        if (cb) cb.onclick = clearSearch;
+        queAll('#chapterList .chapter-btn').forEach(function (b) { b.onclick = function () { show(+b.getAttribute('data-i')); }; });
+        runSearch();
         focusFirst();
+      }
+
+      var HL_QUERY = '';
+      function escRe(s) { return String(s).replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'); }
+      function normAr(s) {
+        return String(s).toLowerCase()
+          .replace(/[\u064B-\u0652\u0670\u0640]/g, '')
+          .replace(/[\u0622\u0623\u0625\u0627]/g, '\u0627')
+          .replace(/\u0649/g, '\u064A')
+          .replace(/\u0626/g, '\u064A')
+          .replace(/\u0624/g, '\u0648')
+          .replace(/\u0629/g, '\u0647');
+      }
+      function highlightIn(root, query) {
+        if (!root || !query) return;
+        var re = new RegExp('(' + escRe(query) + ')', 'gi');
+        var targets = [];
+        (function walk(n) {
+          for (var i = 0; i < n.childNodes.length; i++) {
+            var c = n.childNodes[i];
+            if (c.nodeType === 3) {
+              re.lastIndex = 0;
+              if (re.test(c.nodeValue)) targets.push(c);
+            } else if (c.nodeType === 1 && c.nodeName !== 'MARK') {
+              walk(c);
+            }
+          }
+        })(root);
+        targets.forEach(function (node) {
+          var text = node.nodeValue, frag = document.createDocumentFragment(), last = 0, m;
+          re.lastIndex = 0;
+          while ((m = re.exec(text)) !== null) {
+            if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+            var mk = document.createElement('mark');
+            mk.textContent = m[0];
+            frag.appendChild(mk);
+            last = m.index + m[0].length;
+            if (m[0].length === 0) re.lastIndex++;
+          }
+          if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+          node.parentNode.replaceChild(frag, node);
+        });
+      }
+      function runSearch() {
+        var input = document.getElementById('searchInput');
+        if (!input) return;
+        var q = input.value.trim();
+        var clearBtn = document.getElementById('clearBtn');
+        var counter = document.getElementById('matchCounter');
+        var list = document.getElementById('chapterList');
+        var results = document.getElementById('searchResults');
+        var noRes = document.getElementById('noResults');
+        if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
+        if (!q) {
+          HL_QUERY = '';
+          if (list) list.hidden = false;
+          if (results) { results.hidden = true; results.innerHTML = ''; }
+          if (noRes) noRes.hidden = true;
+          if (counter) counter.textContent = 'عرض جميع الفصول (' + chapters.length + ')';
+          return;
+        }
+        var nq = normAr(q);
+        var hits = [];
+        for (var i = 0; i < chapters.length; i++) {
+          var c = chapters[i];
+          var content = String(c.content || '');
+          var inTitle = normAr(c.title || '').indexOf(nq) > -1;
+          var pos = normAr(content).indexOf(nq);
+          if (inTitle || pos > -1) hits.push({ i: i, c: c, content: content, pos: pos });
+        }
+        if (list) list.hidden = true;
+        if (results) {
+          results.hidden = false;
+          results.innerHTML = hits.map(function (h) {
+            var snippet = '';
+            if (h.pos > -1) {
+              var rawPos = h.content.toLowerCase().indexOf(q.toLowerCase());
+              if (rawPos < 0) rawPos = Math.min(h.pos, Math.max(0, h.content.length - 1));
+              var start = Math.max(0, rawPos - 50);
+              snippet = (start > 0 ? '… ' : '') + h.content.slice(start, rawPos + q.length + 110).replace(/\s+/g, ' ') + ' …';
+            }
+            return '<button type="button" class="chapter-btn search-result" data-i="' + h.i + '">' +
+              '<span class="num">' + (h.i + 1) + '</span>' +
+              '<span class="res-body"><b>' + esc(h.c.title) + '</b>' +
+              (snippet ? '<span class="snippet">' + esc(snippet) + '</span>' : '') +
+              '</span></button>';
+          }).join('');
+          queAll('#searchResults .search-result').forEach(function (b) {
+            b.onclick = function () { HL_QUERY = q; show(+b.getAttribute('data-i')); };
+          });
+          highlightIn(results, q);
+        }
+        if (noRes) noRes.hidden = hits.length > 0;
+        if (counter) counter.textContent = hits.length + ' من ' + chapters.length + ' فصل';
+      }
+      function clearSearch() {
+        var input = document.getElementById('searchInput');
+        if (!input) return;
+        input.value = '';
+        runSearch();
+        input.focus();
       }
 
       function show(i, save) {
@@ -221,6 +360,7 @@
             '<button type="button" id="nextBtn"' + (i >= chapters.length - 1 ? ' disabled' : '') + '>التالي ›</button>' +
           '</div>';
         wireFont();
+        if (HL_QUERY) { var artEl = que('article'); if (artEl) highlightIn(artEl, HL_QUERY); }
         document.getElementById('homeBtn').onclick = function () { home(); };
         var p = document.getElementById('prevBtn'), n = document.getElementById('nextBtn');
         if (p) p.onclick = function () { show(i - 1); };
@@ -276,6 +416,15 @@
         } else if (enter) {
           if (cur && (cur.tagName === 'BUTTON' || cur.tagName === 'A')) { e.preventDefault(); cur.click(); }
         }
+      });
+
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+        var a = document.activeElement;
+        var tag = a && a.tagName ? a.tagName.toLowerCase() : '';
+        if (tag === 'input' || tag === 'textarea' || (a && a.isContentEditable)) return;
+        var s = document.getElementById('searchInput');
+        if (s) { e.preventDefault(); s.focus(); s.select(); }
       });
 
       document.getElementById('themeBtn').onclick = function () {
